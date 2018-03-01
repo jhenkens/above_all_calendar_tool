@@ -2,6 +2,7 @@ from __future__ import print_function
 import httplib2
 import os
 import re
+from dateutil import parser
 from apiclient import discovery
 from oauth2client import client
 from oauth2client import tools
@@ -13,7 +14,8 @@ import json
 try:
     import argparse
     ap = argparse.ArgumentParser(parents=[tools.argparser])
-    ap.add_argument('--file', type=argparse.FileType('r'))
+    ap.add_argument('--file', type=argparse.FileType('r'), required=True)
+    ap.add_argument('--yes', action='store_true', default=False)
     flags = ap.parse_args()
 except ImportError:
     flags = None
@@ -43,6 +45,10 @@ def query_yes_no(question, default="yes"):
 
     while True:
         sys.stdout.write(question + prompt)
+        if flags.yes and default is not None:
+            print(default)
+            return valid[default]
+
         choice = input().lower()
         if default is not None and choice == '':
             return valid[default]
@@ -97,7 +103,7 @@ def main():
     http = credentials.authorize(httplib2.Http())
     service = discovery.build('calendar', 'v3', http=http)
 
-    print('Getting the upcoming 10 events')
+    print('Getting the upcoming events')
     cals = service.calendarList().list().execute().get('items',[])
     kj = 'K & J'
     fl = 'Flight Lessons'
@@ -182,9 +188,8 @@ def parseEvents():
                     event['instructor'] = match.group(1)
     bad_events = [e for e in result if not 'instructor' in e]
     if bad_events:
+        print(json.dumps(bad_events, indent=4, sort_keys=True, default=str))
         raise Exception("Every lesson needs and instructor")
-    if(result):
-        print(json.dumps(result, indent=4, sort_keys=True, default=str))
     return result
 
 def deleteFromCalendar(service, desc, calid):
@@ -197,13 +202,13 @@ def deleteFromCalendar(service, desc, calid):
     events = eventsResult.get('items', [])
     if not events:
         print('No upcoming events found.')
-    for event in events:
-        start = event['start'].get('dateTime', event['start'].get('date'))
-        print(start, event['summary'])
-    if events and query_yes_no("Removing future lessons from " + desc + "?", "no"):
-        for event in events:
-            service.events().delete(calendarId=calid, eventId=event['id']).execute()
-        print("Done deleting from " + desc)
+    if events:
+        print("Found " + str(len(events)) + " events")
+        if query_yes_no("Removing future lessons from " + desc + "?", "yes"):
+            for event in events:
+                sys.exit(1)
+                service.events().delete(calendarId=calid, eventId=event['id']).execute()
+            print("Done deleting from " + desc)
 
 
 
